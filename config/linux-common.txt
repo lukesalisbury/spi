@@ -1,0 +1,13 @@
+[libs]
+m
+SDL3
+[lib_flags]
+-std=c17
+
+[includes]
+[flags]
+-std=c17
+[defines]
+PLATFORM_LINUX
+[linker_flags]
+-Wl,-rpath -Wl,\$$ORIGIN/lib

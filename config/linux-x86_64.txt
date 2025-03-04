@@ -1,0 +1,6 @@
+[defines]
+PLATFORM_BITS=64
+[options]
+compiler=gcc
+linker=$tripletgcc
+static_linker=ar -rc
