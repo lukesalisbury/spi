@@ -96,7 +96,7 @@ SDL_Texture * SPI_LoadImage(const char * path) {
 	SDL_Texture * texture = nullptr;
 	int width, height, channels = 3;
 	unsigned char * data = stbi_load(path, &width, &height, &channels, 4);
-	SDL_Log("Loading %s %d %d %d", path, width, height, channels);
+
 	if ( data ) {
 		image_dimension.w = width;
 		image_dimension.h = height;
@@ -108,6 +108,11 @@ SDL_Texture * SPI_LoadImage(const char * path) {
 	}
 	return texture;
 }
+
+int string_sort(const void * a, const void * b) {
+	return strcmp(*(const char**)a, *(const char**)b);
+}
+
 
 char ** SPI_GlobDirectory(const char * path, const char *pattern, SDL_GlobFlags flags, int * count) {
 	char ** directory = nullptr;
@@ -138,6 +143,8 @@ char ** SPI_GlobDirectory(const char * path, const char *pattern, SDL_GlobFlags 
 	directory = calloc(dir_count, sizeof(char*));
 	rewinddir(current_directory);
 
+
+
 	while ( (entity = readdir(current_directory)) ) {
 		if ( entity->d_name[0] == '.' && (entity->d_name[1] == '.'|| entity->d_name[1]== 0)){
 
@@ -161,7 +168,11 @@ char ** SPI_GlobDirectory(const char * path, const char *pattern, SDL_GlobFlags 
 			}
 		}
 	}
+
 	closedir(current_directory);
+
+	SDL_qsort(directory, dir_count, sizeof(char*), string_sort);
+
 	*count = dir_count;
 	return directory;
 }
@@ -174,9 +185,11 @@ void SPI_Switch(int direction) {
 	}
 
 	if ( current_file_index + direction < 0 ) {
-		current_file_index = current_file_count - 1;
+		//current_file_index = current_file_count - 1;
+		current_file_index = current_file_index;
 	} else if ( current_file_index + direction >= current_file_count ) {
-		current_file_index = 0;
+		//current_file_index = 0;
+		current_file_index = current_file_index;
 	} else {
 		current_file_index += direction;
 	}
@@ -395,7 +408,7 @@ SDL_AppResult SDL_AppIterate( void *appstate ) {
 
 		SDL_RenderTexture(renderer, image_texture, nullptr, &image_rect);
 		SDL_SetRenderDrawColor(renderer, 128, 128, 128, SDL_ALPHA_OPAQUE); 
-		SDL_RenderDebugTextFormat(renderer, x, y+8, "%s", current_path);
+		SDL_RenderDebugTextFormat(renderer, x, y+8, "%s", current_file_list[current_file_index]);
 
 	} else {
 		{
