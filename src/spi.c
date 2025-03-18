@@ -113,7 +113,7 @@ int string_sort(const void * a, const void * b) {
 	return strcmp(*(const char**)a, *(const char**)b);
 }
 
-
+#include <errno.h>
 char ** SPI_GlobDirectory(const char * path, const char *pattern, SDL_GlobFlags flags, int * count) {
 	char ** directory = nullptr;
 
@@ -124,6 +124,8 @@ char ** SPI_GlobDirectory(const char * path, const char *pattern, SDL_GlobFlags 
 	DIR * current_directory = current_directory = opendir(path);
 
 	if ( !current_directory ) {
+		SDL_Log("DIR Error %s", strerror(errno));
+		SDL_Log("Path: %s", path);
 		*count = 0;
 		return directory;
 	}
@@ -131,10 +133,8 @@ char ** SPI_GlobDirectory(const char * path, const char *pattern, SDL_GlobFlags 
 	while ((entity = readdir(current_directory)) ) {
 		if ( entity->d_name[0] == '.' && (entity->d_name[1] == '.'|| entity->d_name[1]== 0)) {
 
-		//} else if (suffix) {
-		//	if ( elix_cstring_has_suffix(entity->d_name, suffix ) ) {
-		//		dir_count++;
-		//	}
+		} else if ( elix_cstring_has_suffix(entity->d_name, "-DELETED") ) {
+		
 		} else {
 			dir_count++;
 		}
@@ -148,21 +148,14 @@ char ** SPI_GlobDirectory(const char * path, const char *pattern, SDL_GlobFlags 
 	while ( (entity = readdir(current_directory)) ) {
 		if ( entity->d_name[0] == '.' && (entity->d_name[1] == '.'|| entity->d_name[1]== 0)){
 
-		//} else if (suffix) {
-		//	if ( elix_cstring_has_suffix(entity->d_name, suffix ) ) {
-		//		elix_cstring_append(buffer, ELIX_FILE_PATH_LENGTH, entity->d_name, filename_size);
-		//		elix_path_update(&(directory->files[index]), buffer);
-		//		index++;
-		//		memset(filename_buffer, 0, filename_size);
-		//	}
+		} else if ( elix_cstring_has_suffix(entity->d_name, "-DELETED") ) {
 		} else {
-			size_t filename_size = strlen(entity->d_name);
+			size_t filename_size = strlen(entity->d_name)+1;
 			if ( filename_size < 256 ) {
 				directory[index] = calloc(filename_size, sizeof(char));
 				strncpy(directory[index], entity->d_name, filename_size);
 				
 				index++;
-				
 			} else {
 				SDL_Log("Filename too long: %s\n", entity->d_name);
 			}
@@ -215,6 +208,7 @@ void SPI_EnterDirectory(const char * path) {
 	}
 	memset(current_path, 0, ELIX_FILE_PATH_LENGTH);
 	elix_cstring_append(current_path, ELIX_FILE_PATH_LENGTH, path, strlen(path));
+	elix_cstring_append(current_path, ELIX_FILE_PATH_LENGTH, "/", 1);
 
 	current_file_list = SPI_GlobDirectory(current_path, ".png", SDL_GLOB_CASEINSENSITIVE, &current_file_count);
 	current_file_index = 0;
@@ -441,7 +435,7 @@ SDL_AppResult SDL_AppIterate( void *appstate ) {
 
 			y += 24.0f;
 		}
-		for (int i = current_directory_index; i - current_directory_index < current_directory_limit; i++) {
+		for (int i = current_directory_index; (i - current_directory_index < current_directory_limit) && (i < current_directory_count); i++) {
 			uint8_t colour = 0;
 
 			hit_rect.x = x;
