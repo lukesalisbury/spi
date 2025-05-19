@@ -36,7 +36,7 @@ char current_path[ELIX_FILE_PATH_LENGTH] = {0};
 
 SDL_Window * window = NULL;
 SDL_Renderer *renderer = NULL;
-SDL_Texture * image_texture = nullptr;
+SDL_Texture * image_texture = nullptr, * preview_texture = nullptr;
 SDL_FRect image_dimension = {0.0f, 0.0f, 1360.0, 1920.0};
 SPI_Input input = {0};
 
@@ -91,7 +91,6 @@ size_t elix_cstring_append( char * str, const size_t len, const char * text, con
 	return length;
 }
 
-
 SDL_Texture * SPI_LoadImage(const char * path) {
 	SDL_Texture * texture = nullptr;
 	int width, height, channels = 3;
@@ -114,7 +113,8 @@ int string_sort(const void * a, const void * b) {
 }
 
 #include <errno.h>
-char ** SPI_GlobDirectory(const char * path, const char *pattern, SDL_GlobFlags flags, int * count) {
+char **SPI_GlobDirectory(const char *path, const char *pattern, SDL_GlobFlags flags, int *count)
+{
 	char ** directory = nullptr;
 
 	int index = 0;
@@ -143,8 +143,6 @@ char ** SPI_GlobDirectory(const char * path, const char *pattern, SDL_GlobFlags 
 	directory = calloc(dir_count, sizeof(char*));
 	rewinddir(current_directory);
 
-
-
 	while ( (entity = readdir(current_directory)) ) {
 		if ( entity->d_name[0] == '.' && (entity->d_name[1] == '.'|| entity->d_name[1]== 0)){
 
@@ -169,7 +167,6 @@ char ** SPI_GlobDirectory(const char * path, const char *pattern, SDL_GlobFlags 
 	*count = dir_count;
 	return directory;
 }
-
 
 void SPI_Switch(int direction) {
 
@@ -208,7 +205,7 @@ void SPI_EnterDirectory(const char * path) {
 	}
 	memset(current_path, 0, ELIX_FILE_PATH_LENGTH);
 	elix_cstring_append(current_path, ELIX_FILE_PATH_LENGTH, path, strlen(path));
-	elix_cstring_append(current_path, ELIX_FILE_PATH_LENGTH, "/", 1);
+	//elix_cstring_append(current_path, ELIX_FILE_PATH_LENGTH, "/", 1);
 
 	current_file_list = SPI_GlobDirectory(current_path, ".png", SDL_GLOB_CASEINSENSITIVE, &current_file_count);
 	current_file_index = 0;
@@ -230,13 +227,52 @@ void SPI_ListDirectory(const char * path) {
 
 
 }
+SDL_Texture * SPI_LoadPreview(const char * path) {
+	int file_count = 0;
+	char ** file_list = SPI_GlobDirectory(path, ".png", SDL_GLOB_CASEINSENSITIVE, &file_count);
+	if (file_count == 0 || file_list == nullptr) {
+		return nullptr;
+	}
+	
+	//Note: path points to buffer_path so lets bypass 'const'
+	elix_cstring_append(buffer_path, ELIX_FILE_PATH_LENGTH, file_list[0], strlen(file_list[0]));
+
+	SDL_Texture * texture = nullptr;
+	int width, height, channels = 3;
+	unsigned char * data = stbi_load(buffer_path, &width, &height, &channels, 4);
+
+	if ( data ) {
+		image_dimension.w = width;
+		image_dimension.h = height;
+		texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, width, height);
+		if ( texture ) {
+			SDL_UpdateTexture(texture, NULL, data, width * 4);
+		}
+		stbi_image_free(data);
+	}
+	SDL_free(file_list);
+	return texture;
+}
+void SPI_DestroyPreview() {
+	if (preview_texture)
+	{
+		SDL_DestroyTexture(preview_texture);
+		preview_texture = nullptr;
+	}
+}
 
 
 /* This function runs once at startup. */
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
-	//elix_cstring_append(temp_dir, ELIX_FILE_PATH_LENGTH, argv[1], strlen(argv[1]));
+	if ( argc < 2 ) {
 
-	elix_cstring_append(temp_dir, ELIX_FILE_PATH_LENGTH, "/run/media/luke/NewMedia/backup/4/", 35);
+		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "No path given!", "Please provide a path to the directory to open.", NULL);
+		return SDL_APP_FAILURE;
+		//elix_cstring_append(temp_dir, ELIX_FILE_PATH_LENGTH, "/run/media/luke/NewMedia/backup/4/", 35);
+	} else if ( argc >= 2 ) {
+		elix_cstring_append(temp_dir, ELIX_FILE_PATH_LENGTH, argv[1], strlen(argv[1]));
+	}
+
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Couldn't initialize SDL!", SDL_GetError(), NULL);
@@ -341,7 +377,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
 		
 		SDL_Log("Drop position on window %u at (%f, %f) data = %s", (unsigned int)event->drop.windowID, w_x, w_y, event->drop.data);
 	} else if (event->type == event_dir_id) {
-		SDL_Log("DIR CHANGE %s", (char*)event->user.data1);
+		//SDL_Log("DIR CHANGE %s", (char*)event->user.data1);
 
 		memset(buffer_path, 0, ELIX_FILE_PATH_LENGTH);
 		elix_cstring_append(buffer_path, ELIX_FILE_PATH_LENGTH, temp_dir, strlen(temp_dir));
@@ -361,7 +397,7 @@ SDL_Color text_colours[] = {
 	{255, 128, 128, SDL_ALPHA_OPAQUE},
 	{0, 128, 128, SDL_ALPHA_OPAQUE},
 };
-
+int current_preview_index = 0;
 SDL_Event event= {0};
 
 SDL_AppResult SDL_AppIterate( void *appstate ) {
@@ -393,6 +429,10 @@ SDL_AppResult SDL_AppIterate( void *appstate ) {
 	x = w - ( SDL_DEBUG_TEXT_FONT_CHARACTER_SIZE * 64);
 
 	if ( image_texture ) {
+		if ( preview_texture ) {
+			SDL_DestroyTexture(preview_texture);
+			preview_texture = nullptr;
+		}
 		SDL_FRect image_rect = {0.0f, 0.0f, image_dimension.w, image_dimension.h};
 
 		float scale = (float)h / (float)image_texture->h;
@@ -401,10 +441,20 @@ SDL_AppResult SDL_AppIterate( void *appstate ) {
 		image_rect.h = image_texture->h * scale;
 
 		SDL_RenderTexture(renderer, image_texture, nullptr, &image_rect);
-		SDL_SetRenderDrawColor(renderer, 128, 128, 128, SDL_ALPHA_OPAQUE); 
-		SDL_RenderDebugTextFormat(renderer, x, y+8, "%s", current_file_list[current_file_index]);
+		SDL_SetRenderDrawColor(renderer, 20, 24, 32, SDL_ALPHA_OPAQUE); 
+		SDL_RenderDebugTextFormat(renderer, w-64, y+8, "%s", current_file_list[current_file_index]);
 
-	} else {
+	} else if (current_directory_count > 0) {
+		if ( preview_texture ) {
+			SDL_FRect image_rect = {0.0f, 0.0f, image_dimension.w, image_dimension.h};
+
+			float scale = (float)h / (float)preview_texture->h;
+
+			image_rect.w = preview_texture->w * scale;
+			image_rect.h = preview_texture->h * scale;
+
+			SDL_RenderTexture(renderer, preview_texture, nullptr, &image_rect);
+		} 
 		{
 			uint8_t colour = 0;
 
@@ -453,6 +503,17 @@ SDL_AppResult SDL_AppIterate( void *appstate ) {
 
 				} else {
 					colour = 1;
+					if ( current_preview_index != i) {
+						current_preview_index = i;
+						SPI_DestroyPreview();
+
+						memset(buffer_path, 0, ELIX_FILE_PATH_LENGTH);
+						elix_cstring_append(buffer_path, ELIX_FILE_PATH_LENGTH, temp_dir, strlen(temp_dir));
+						elix_cstring_append(buffer_path, ELIX_FILE_PATH_LENGTH, current_directory_list[i], SDL_strlen(current_directory_list[i]));
+						elix_cstring_append(buffer_path, ELIX_FILE_PATH_LENGTH, "/", 1);
+						
+						preview_texture = SPI_LoadPreview(buffer_path);
+					}
 				}
 			}
 
@@ -500,13 +561,12 @@ SDL_AppResult SDL_AppIterate( void *appstate ) {
     return SDL_APP_CONTINUE;  /* carry on with the program! */
 }
 
-void SDL_AppQuit(void *appstate, SDL_AppResult result) {
-    /* SDL will clean up the window/renderer for us. */
-
+void SDL_AppQuit(void *appstate, SDL_AppResult result)
+{
+	/* SDL will clean up the window/renderer for us. */
+	SPI_DestroyPreview();
 	if ( image_texture ) {
 		SDL_DestroyTexture(image_texture);
 		image_texture = nullptr;
 	}
-
 }
-
